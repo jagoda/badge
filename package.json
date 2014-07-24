@@ -4,7 +4,7 @@
   "description": "Stateless GitHub authentication for Hapi.",
   "main": "lib/",
   "scripts": {
-    "test": "node --harmony gulpfile.js"
+    "test": "gulp"
   },
   "repository": {
     "type": "git",

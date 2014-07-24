@@ -1,22 +1,21 @@
 "use strict";
-let fs      = require("fs");
-let gulp    = require("gulp");
-let jshint  = require("gulp-jshint");
-let lab     = require("gulp-lab");
-let path    = require("path");
-let stylish = require("jshint-stylish");
-let _       = require("lodash");
+var fs      = require("fs");
+var gulp    = require("gulp");
+var jshint  = require("gulp-jshint");
+var lab     = require("gulp-lab");
+var path    = require("path");
+var stylish = require("jshint-stylish");
+var _       = require("lodash");
 
-const JSHINTRC     = ".jshintrc";
-const SOURCE_FILES = [ "*.js", "lib/**/*.js" ];
-const TEST_FILES   = [ "test/**/*_spec.js" ];
+var JSHINTRC     = ".jshintrc";
+var SOURCE_FILES = [ "*.js", "lib/**/*.js" ];
+var TEST_FILES   = [ "test/**/*_spec.js" ];
 
 function runJshint (files, overrides) {
-	let options = JSON.parse(fs.readFileSync(path.join(__dirname, JSHINTRC)));
+	var options = JSON.parse(fs.readFileSync(path.join(__dirname, JSHINTRC)));
 	
 	if (overrides) {
-		let additions = JSON.parse(fs.readFileSync(overrides));
-		options = _.merge(options, additions);
+		options = _.merge(options, JSON.parse(fs.readFileSync(overrides)));
 	}
 
 	return gulp.src(files)
@@ -40,8 +39,7 @@ gulp.task("lint-test", function () {
 gulp.task("test", [ "lint" ], function () {
 	return gulp.src(TEST_FILES)
 	.pipe(lab({
-		// FIXME: should only ignore Proxy global once patch is published.
-		args : "-l -p",
+		args : "-p",
 		opts : {
 			emitLabError : true
 		}
@@ -54,7 +52,3 @@ gulp.on("err", function (error) {
 	console.error(error.err.stack);
 	process.exit(1);
 });
-
-if (require.main === module) {
-	gulp.start("default");
-}
