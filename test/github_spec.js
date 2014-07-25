@@ -182,6 +182,37 @@ describe("The GitHub basic auth scheme", function () {
 				done();
 			});
 		});
+
+		describe("without a basic credential", function () {
+			var response;
+
+			before(function (done) {
+				server.inject(
+					{
+						method : "GET",
+						url    : "/"
+					},
+					function (_response_) {
+						response = _response_;
+						done();
+					}
+				);
+			});
+
+			it("does not return a username", function (done) {
+				expect(response.result.credentials.username, "username")
+				.not.to.exist;
+
+				done();
+			});
+
+			it("prohibits the request", function (done) {
+				expect(response.result.isAuthenticated, "permitted")
+				.to.be.false;
+
+				done();
+			});
+		});
 	});
 
 	describe("configured with client credentials", function () {
