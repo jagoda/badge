@@ -13,7 +13,7 @@ var TEST_FILES   = [ "test/**/*_spec.js" ];
 
 function runJshint (files, overrides) {
 	var options = JSON.parse(fs.readFileSync(path.join(__dirname, JSHINTRC)));
-	
+
 	if (overrides) {
 		options = _.merge(options, JSON.parse(fs.readFileSync(overrides)));
 	}
@@ -23,6 +23,11 @@ function runJshint (files, overrides) {
 	.pipe(jshint.reporter(stylish))
 	.pipe(jshint.reporter("fail"));
 }
+
+gulp.task("coverage", function () {
+	return gulp.src(TEST_FILES)
+	.pipe(lab("-p -r html -o coverage.html"));
+});
 
 gulp.task("default", [ "test" ]);
 
@@ -39,7 +44,7 @@ gulp.task("lint-test", function () {
 gulp.task("test", [ "lint" ], function () {
 	return gulp.src(TEST_FILES)
 	.pipe(lab({
-		args : "-p",
+		args : "-p -t 100",
 		opts : {
 			emitLabError : true
 		}

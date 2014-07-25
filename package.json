@@ -4,6 +4,7 @@
   "description": "Stateless GitHub authentication for Hapi.",
   "main": "lib/",
   "scripts": {
+    "coverage": "gulp coverage && xdg-open coverage.html || open coverage.html",
     "test": "gulp"
   },
   "repository": {
@@ -26,9 +27,14 @@
     "gulp-jshint": "^1.7.1",
     "gulp-lab": "0.0.10",
     "jshint-stylish": "^0.4.0",
-    "lab": "^3.2.1"
+    "lab": "^3.2.1",
+    "nock": "^0.42.2",
+    "sinon": "^1.10.3"
   },
   "dependencies": {
-    "lodash": "^2.4.1"
+    "hapi": "^6.2.1",
+    "lodash": "^2.4.1",
+    "nipple": "^2.5.3",
+    "q": "^1.0.1"
   }
 }
