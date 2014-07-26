@@ -14,15 +14,37 @@ var it       = Lab.it;
 
 var GITHUB_API = "https://api.github.com";
 var LOGIN      = "octocat";
-var USERNAME   = "testy";
 var PASSWORD   = "password";
-
-function basicAuth (username, password) {
-	return "Basic " +
-		(new Buffer(username + ":" + password)).toString("base64");
-}
+var TOKEN      = "token";
+var USERNAME   = "testy";
 
 describe("The GitHub basic auth scheme", function () {
+
+	function authenticate (server, callback) {
+		server.inject(
+			{
+				headers : {
+					authorization : basicAuth(USERNAME, PASSWORD)
+				},
+
+				method : "GET",
+				url    : "/"
+			},
+			callback
+		);
+	}
+
+	function basicAuth (username, password) {
+		return "Basic " +
+			(new Buffer(username + ":" + password)).toString("base64");
+	}
+
+	function userRequest () {
+		return nock(GITHUB_API)
+		.matchHeader("Authorization", basicAuth(USERNAME, PASSWORD))
+		.get("/user");
+	}
+
 	before(function (done) {
 		nock.disableNetConnect();
 		done();
@@ -35,26 +57,6 @@ describe("The GitHub basic auth scheme", function () {
 
 	describe("using the default configuration", function () {
 		var server;
-
-		function userRequest () {
-			return nock(GITHUB_API)
-			.matchHeader("Authorization", basicAuth(USERNAME, PASSWORD))
-			.get("/user");
-		}
-
-		function authenticate (callback) {
-			server.inject(
-				{
-					headers : {
-						authorization : basicAuth(USERNAME, PASSWORD)
-					},
-
-					method : "GET",
-					url    : "/"
-				},
-				callback
-			);
-		}
 
 		before(function (done) {
 			server = new Hapi.Server();
@@ -87,7 +89,7 @@ describe("The GitHub basic auth scheme", function () {
 
 			before(function (done) {
 				request = userRequest().reply(200, { login : LOGIN });
-				authenticate(function (_response_) {
+				authenticate(server, function (_response_) {
 					response = _response_;
 					done();
 				});
@@ -124,7 +126,7 @@ describe("The GitHub basic auth scheme", function () {
 
 			before(function (done) {
 				request = userRequest().reply(401);
-				authenticate(function (_response_) {
+				authenticate(server, function (_response_) {
 					response = _response_;
 					done();
 				});
@@ -157,7 +159,7 @@ describe("The GitHub basic auth scheme", function () {
 					}
 				);
 
-				authenticate(function (_response_) {
+				authenticate(server, function (_response_) {
 					response = _response_;
 					done();
 				});
@@ -216,23 +218,182 @@ describe("The GitHub basic auth scheme", function () {
 	});
 
 	describe("configured with client credentials", function () {
+		var CLIENT_ID     = "id";
+		var CLIENT_SECRET = "secret";
+		var NOTE          = "an app";
+		var SCOPES        = [ "a scope" ];
+		var URL           = "http://example.com";
+
+		var server;
+
+		function tokenRequest () {
+			return nock(GITHUB_API)
+			.matchHeader("Authorization", basicAuth(USERNAME, PASSWORD))
+			.put(
+				"/authorizations/clients/" + CLIENT_ID,
+				/* jshint -W106 */
+				{
+					client_secret : CLIENT_SECRET,
+					note          : NOTE,
+					note_url      : URL,
+					scopes        : SCOPES
+				}
+				/* jshint +W106 */
+			);
+		}
+
+		before(function (done) {
+			server = new Hapi.Server();
+			server.pack.register(plugin, function (error) {
+
+				server.auth.strategy("generate-token", "github-basic", {
+					clientId     : CLIENT_ID,
+					clientSecret : CLIENT_SECRET,
+					note         : NOTE,
+					scopes       : SCOPES,
+					url          : URL
+				});
+
+				server.route({
+					config : {
+						auth : {
+							mode     : "try",
+							strategy : "generate-token"
+						}
+					},
+
+					handler : function (request, reply) {
+						reply(request.auth);
+					},
+
+					method : "GET",
+					path   : "/"
+				});
+
+				done(error);
+			});
+		});
 
 		describe("with valid credentials", function () {
+			var response;
+			var tokenNock;
+			var userNock;
 
-			it("returns the username");
+			before(function (done) {
+				tokenNock = tokenRequest().reply(200, { token : TOKEN });
+				userNock  = userRequest().reply(200, { login : LOGIN });
 
-			it("returns an API token");
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
 
-			it("permits the request");
+			after(function (done) {
+				nock.cleanAll();
+				done();
+			});
+
+			it("verifies the request with GitHub", function (done) {
+				expect(userNock.isDone(), "no user request").to.be.true;
+				expect(tokenNock.isDone(), "no token request").to.be.true;
+				done();
+			});
+
+			it("returns the username", function (done) {
+				expect(response.result.credentials, "no username")
+				.to.have.property("username", LOGIN);
+
+				done();
+			});
+
+			it("returns an API token", function (done) {
+				expect(response.result.artifacts, "no token")
+				.to.have.property("token", TOKEN);
+
+				done();
+			});
+
+			it("permits the request", function (done) {
+				expect(response.result.isAuthenticated, "not permitted")
+				.to.be.true;
+
+				done();
+			});
 		});
 
 		describe("with invalid credentials", function () {
+			var response;
+			var userNock;
 
-			it("returns the username");
+			before(function (done) {
+				userNock  = userRequest().reply(401);
 
-			it("does not return and API token");
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
 
-			it("prohibits the request");
+			after(function (done) {
+				nock.cleanAll();
+				done();
+			});
+
+			it("returns the username", function (done) {
+				expect(response.result.credentials, "no username")
+				.to.have.property("username", USERNAME);
+
+				done();
+			});
+
+			it("does not return and API token", function (done) {
+				expect(response.result.artifacts, "found token")
+				.not.to.have.property("token");
+				done();
+			});
+
+			it("prohibits the request", function (done) {
+				expect(response.result.isAuthenticated, "permitted")
+				.to.be.false;
+
+				done();
+			});
+		});
+
+		describe("failing to retrieve a token", function () {
+			var response;
+			var tokenNock;
+			var userNock;
+
+			before(function (done) {
+				tokenNock = tokenRequest().reply(500);
+				userNock  = userRequest().reply(200, { login : LOGIN });
+
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
+
+			after(function (done) {
+				nock.cleanAll();
+				done();
+			});
+
+			it("does not return and API token", function (done) {
+				expect(response.result.artifacts, "found token")
+				.not.to.have.property("token");
+
+				done();
+			});
+
+			it("prohibits the request", function (done) {
+				expect(response.result.isAuthenticated, "permitted")
+				.to.be.false;
+
+				done();
+			});
 		});
 	});
 
