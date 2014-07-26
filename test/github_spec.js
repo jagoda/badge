@@ -25,6 +25,11 @@ var NOTE          = "an app";
 var SCOPES        = [ "a scope" ];
 var URL           = "http://example.com";
 
+function basicAuth (username, password) {
+	return "Basic " +
+		(new Buffer(username + ":" + password)).toString("base64");
+}
+
 describe("The GitHub basic auth scheme", function () {
 
 	function authenticate (server, callback) {
@@ -39,11 +44,6 @@ describe("The GitHub basic auth scheme", function () {
 			},
 			callback
 		);
-	}
-
-	function basicAuth (username, password) {
-		return "Basic " +
-			(new Buffer(username + ":" + password)).toString("base64");
 	}
 
 	function userRequest () {
@@ -462,20 +462,125 @@ describe("The GitHub basic auth scheme", function () {
 
 describe("The GitHub token auth scheme", function () {
 
+	function authenticate (server, done) {
+		server.inject(
+			{
+				headers : {
+					authorization : "token " + TOKEN
+				},
+
+				method : "GET",
+				url    : "/"
+			},
+			done
+		);
+	}
+
+	before(function (done) {
+		nock.disableNetConnect();
+		done();
+	});
+
+	after(function (done) {
+		nock.enableNetConnect();
+		done();
+	});
+
 	describe("using the basic configuration", function () {
+		var server;
+
+		function tokenRequest () {
+			return nock(GITHUB_API)
+			.matchHeader("Authorization", basicAuth(CLIENT_ID, CLIENT_SECRET))
+			.get("/applications/" + CLIENT_ID + "/tokens/" + TOKEN);
+		}
+
+		before(function (done) {
+			server = new Hapi.Server();
+			server.pack.register(plugin, function (error) {
+				server.auth.strategy("token-basic", "github-token", {
+					clientId     : CLIENT_ID,
+					clientSecret : CLIENT_SECRET
+				});
+
+				server.route(
+					{
+						config : {
+							auth : {
+								mode    : "try",
+								strategy : "token-basic"
+							}
+						},
+
+						handler : function (request, reply) {
+							reply(request.auth);
+						},
+
+						method : "GET",
+						path   : "/"
+					}
+				);
+
+				done(error);
+			});
+		});
 
 		describe("with a valid token", function () {
+			var response;
+			var tokenNock;
 
-			it("verifies the token with GitHub");
+			before(function (done) {
+				tokenNock = tokenRequest().reply(
+					200,
+					{
+						token : TOKEN,
+						user  : {
+							login : LOGIN
+						}
+					}
+				);
 
-			it("returns the username");
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
 
-			it("permits the request");
+			it("verifies the token with GitHub", function (done) {
+				expect(tokenNock.isDone(), "no GitHub request").to.be.true;
+				done();
+			});
+
+			it("returns the username", function (done) {
+				expect(response.result.credentials, "no username")
+				.to.have.property("username", LOGIN);
+
+				done();
+			});
+
+			it("permits the request", function (done) {
+				expect(response.result.isAuthenticated, "not permitted").to.be.true;
+				done();
+			});
 		});
 
 		describe("with an invalid token", function () {
 
-			it("returns the token");
+			it("verifies the token with GitHub");
+
+			it("does not return the username");
+
+			it("prohibits the request");
+		});
+
+		describe("failing to contact GitHub", function () {
+
+			it("does not return the username");
+
+			it("prohibits the request");
+		});
+
+		describe("without a token", function () {
 
 			it("does not return the username");
 
@@ -503,6 +608,8 @@ describe("The GitHub token auth scheme", function () {
 	});
 
 	describe("configuration", function () {
+		it("must be provided");
+
 		it("requires a client ID");
 
 		it("requires a client secret");
