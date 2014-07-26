@@ -139,6 +139,11 @@ describe("The GitHub basic auth scheme", function () {
 				});
 			});
 
+			it("verifies the credentials with GitHub", function (done) {
+				expect(request.isDone(), "no GitHub request").to.be.true;
+				done();
+			});
+
 			it("returns the username", function (done) {
 				expect(response.result.credentials, "no username")
 				.to.have.property("username", USERNAME);
@@ -341,6 +346,11 @@ describe("The GitHub basic auth scheme", function () {
 				done();
 			});
 
+			it("verifies the credentials with GitHub", function (done) {
+				expect(userNock.isDone(), "no GitHub request").to.be.true;
+				done();
+			});
+
 			it("returns the username", function (done) {
 				expect(response.result.credentials, "no username")
 				.to.have.property("username", USERNAME);
@@ -379,6 +389,12 @@ describe("The GitHub basic auth scheme", function () {
 
 			after(function (done) {
 				nock.cleanAll();
+				done();
+			});
+
+			it("verifies the request with GitHub", function (done) {
+				expect(userNock.isDone(), "no user request").to.be.true;
+				expect(tokenNock.isDone(), "no token request").to.be.true;
 				done();
 			});
 
@@ -450,6 +466,8 @@ describe("The GitHub token auth scheme", function () {
 
 		describe("with a valid token", function () {
 
+			it("verifies the token with GitHub");
+
 			it("returns the username");
 
 			it("permits the request");
@@ -468,6 +486,8 @@ describe("The GitHub token auth scheme", function () {
 	describe("configured with an organization", function () {
 
 		describe("with a token belonging to the organization", function () {
+
+			it("verifies organization membership with GitHub");
 
 			it("returns the username");
 
