@@ -5,18 +5,25 @@ var Nipple = require("nipple");
 var nock   = require("nock");
 var plugin = require("..");
 var sinon  = require("sinon");
+var _      = require("lodash");
 
-var after    = Lab.after;
-var before   = Lab.before;
-var describe = Lab.describe;
-var expect   = Lab.expect;
-var it       = Lab.it;
+var after      = Lab.after;
+var before     = Lab.before;
+var describe   = Lab.describe;
+var expect     = Lab.expect;
+var it         = Lab.it;
 
 var GITHUB_API = "https://api.github.com";
 var LOGIN      = "octocat";
 var PASSWORD   = "password";
 var TOKEN      = "token";
 var USERNAME   = "testy";
+
+var CLIENT_ID     = "id";
+var CLIENT_SECRET = "secret";
+var NOTE          = "an app";
+var SCOPES        = [ "a scope" ];
+var URL           = "http://example.com";
 
 describe("The GitHub basic auth scheme", function () {
 
@@ -218,12 +225,6 @@ describe("The GitHub basic auth scheme", function () {
 	});
 
 	describe("configured with client credentials", function () {
-		var CLIENT_ID     = "id";
-		var CLIENT_SECRET = "secret";
-		var NOTE          = "an app";
-		var SCOPES        = [ "a scope" ];
-		var URL           = "http://example.com";
-
 		var server;
 
 		function tokenRequest () {
@@ -397,35 +398,55 @@ describe("The GitHub basic auth scheme", function () {
 		});
 	});
 
-	describe("configured without a client ID", function () {
+	describe("configuration", function () {
+		var configuration = {
+			clientId     : CLIENT_ID,
+			clientSecret : CLIENT_SECRET,
+			note         : NOTE,
+			scopes       : SCOPES,
+			url          : URL
+		};
 
-		it("fails");
-	});
+		function testConfiguration (key, done) {
+			var server  = new Hapi.Server();
+			var options = _.clone(configuration);
 
-	describe("configured without a client secret", function () {
+			server.pack.register(plugin, function () {
+				delete options[key];
 
-		it("fails");
-	});
+				expect(function () {
+					server.auth.strategy("error", "github-basic", options);
+				}).to.throw(new RegExp(key, "i"));
 
-	describe("configured without a list of scopes", function () {
+				done();
+			});
+		}
 
-		it("fails");
-	});
+		it("requires a client ID", function (done) {
+			testConfiguration("clientId", done);
+		});
 
-	describe("configured without a note", function () {
+		it("requires a client secret", function (done) {
+			testConfiguration("clientSecret", done);
+		});
 
-		it("fails");
-	});
+		it("requires a note", function (done) {
+			testConfiguration("note", done);
+		});
 
-	describe("configured without a URL", function () {
+		it("requires a scope list", function (done) {
+			testConfiguration("scopes", done);
+		});
 
-		it("fails");
+		it("requires a URL", function (done) {
+			testConfiguration("url", done);
+		});
 	});
 });
 
 describe("The GitHub token auth scheme", function () {
 
-	describe("using the default configuration", function () {
+	describe("using the basic configuration", function () {
 
 		describe("with a valid token", function () {
 
@@ -461,13 +482,9 @@ describe("The GitHub token auth scheme", function () {
 		});
 	});
 
-	describe("configured without a client ID", function () {
+	describe("configuration", function () {
+		it("requires a client ID");
 
-		it("fails");
-	});
-
-	describe("configured without a client secret", function () {
-
-		it("fails");
+		it("requires a client secret");
 	});
 });
