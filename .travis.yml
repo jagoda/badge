@@ -10,4 +10,4 @@ deploy:
   on:
     tags: true
     repo: jagoda/badge
-    branch: master
+    all_branches: true
