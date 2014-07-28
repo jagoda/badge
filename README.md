@@ -62,4 +62,4 @@ tokens will also be required to be authorized with the specified organization.
 		organization : <org name>
 	});
 
-[Hapi][hapi]: https://github.com/spumko/hapi "Hapi"
+[Hapi]: https://github.com/spumko/hapi "Hapi"
