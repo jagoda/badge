@@ -822,10 +822,27 @@ describe("The GitHub token auth scheme", function () {
 	});
 
 	describe("configuration", function () {
-		it("must be provided");
+		function testConfiguration (config, pattern, done) {
+			var server = new Hapi.Server();
+			server.pack.register(plugin, function (error) {
+				expect(function () {
+					server.auth.strategy("config", "github-token", config);
+				}).to.throw(pattern);
 
-		it("requires a client ID");
+				done(error);
+			});
+		}
 
-		it("requires a client secret");
+		it("must be provided", function (done) {
+			testConfiguration(undefined, /client configuration/i, done);
+		});
+
+		it("requires a client ID", function (done) {
+			testConfiguration({ clientSecret : CLIENT_SECRET }, /clientId/i, done);
+		});
+
+		it("requires a client secret", function (done) {
+			testConfiguration({ clientId : CLIENT_ID }, /clientSecret/i, done);
+		});
 	});
 });
