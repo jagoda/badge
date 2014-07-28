@@ -559,32 +559,118 @@ describe("The GitHub token auth scheme", function () {
 			});
 
 			it("permits the request", function (done) {
-				expect(response.result.isAuthenticated, "not permitted").to.be.true;
+				expect(response.result.isAuthenticated, "not permitted")
+				.to.be.true;
+
 				done();
 			});
 		});
 
 		describe("with an invalid token", function () {
+			var response;
+			var tokenNock;
 
-			it("verifies the token with GitHub");
+			before(function (done) {
+				tokenNock = tokenRequest().reply(404);
 
-			it("does not return the username");
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
 
-			it("prohibits the request");
+			it("verifies the token with GitHub", function (done) {
+				expect(tokenNock.isDone(), "no GitHub request").to.be.true;
+				done();
+			});
+
+			it("does not return the username", function (done) {
+				expect(response.result.credentials, "found username")
+				.not.to.have.property("username");
+
+				done();
+			});
+
+			it("prohibits the request", function (done) {
+				expect(response.result.isAuthenticated, "permitted")
+				.to.be.false;
+
+				done();
+			});
 		});
 
 		describe("failing to contact GitHub", function () {
+			var getStub;
+			var response;
 
-			it("does not return the username");
+			before(function (done) {
+				getStub = sinon.stub(
+					Nipple, "get",
+					function (uri, options, callback) {
+						callback(new Error("boom!"));
+					}
+				);
 
-			it("prohibits the request");
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
+
+			after(function (done) {
+				getStub.restore();
+				done();
+			});
+
+			it("verifies the request with GitHub", function (done) {
+				expect(getStub.calledOnce, "no GitHub request").to.be.true;
+				done();
+			});
+
+			it("does not return the username", function (done) {
+				expect(response.result.credentials, "found username")
+				.not.to.have.property("username");
+
+				done();
+			});
+
+			it("prohibits the request", function (done) {
+				expect(response.result.isAuthenticated, "permitted")
+				.to.be.false;
+
+				done();
+			});
 		});
 
 		describe("without a token", function () {
+			var response;
 
-			it("does not return the username");
+			before(function (done) {
+				server.inject(
+					{
+						method : "GET",
+						url    : "/"
+					},
+					function (_response_) {
+						response = _response_;
+						done();
+					}
+				);
+			});
 
-			it("prohibits the request");
+			it("does not return the username", function (done) {
+				expect(response.result.credentials, "found username")
+				.not.to.have.property("username");
+
+				done();
+			});
+
+			it("prohibits the request", function (done) {
+				expect(response.result.isAuthenticated, "permitted")
+				.to.be.false;
+
+				done();
+			});
 		});
 	});
 
