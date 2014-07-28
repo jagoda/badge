@@ -13,11 +13,13 @@ var describe   = Lab.describe;
 var expect     = Lab.expect;
 var it         = Lab.it;
 
-var GITHUB_API = "https://api.github.com";
-var LOGIN      = "octocat";
-var PASSWORD   = "password";
-var TOKEN      = "token";
-var USERNAME   = "testy";
+var GITHUB_API   = "https://api.github.com";
+var LOGIN        = "octocat";
+var OAUTH        = "x-oauth-basic";
+var ORGANIZATION = "octocats";
+var PASSWORD     = "password";
+var TOKEN        = "token";
+var USERNAME     = "testy";
 
 var CLIENT_ID     = "id";
 var CLIENT_SECRET = "secret";
@@ -476,6 +478,12 @@ describe("The GitHub token auth scheme", function () {
 		);
 	}
 
+	function tokenRequest () {
+		return nock(GITHUB_API)
+		.matchHeader("Authorization", basicAuth(CLIENT_ID, CLIENT_SECRET))
+		.get("/applications/" + CLIENT_ID + "/tokens/" + TOKEN);
+	}
+
 	before(function (done) {
 		nock.disableNetConnect();
 		done();
@@ -489,12 +497,6 @@ describe("The GitHub token auth scheme", function () {
 	describe("using the basic configuration", function () {
 		var server;
 
-		function tokenRequest () {
-			return nock(GITHUB_API)
-			.matchHeader("Authorization", basicAuth(CLIENT_ID, CLIENT_SECRET))
-			.get("/applications/" + CLIENT_ID + "/tokens/" + TOKEN);
-		}
-
 		before(function (done) {
 			server = new Hapi.Server();
 			server.pack.register(plugin, function (error) {
@@ -507,7 +509,7 @@ describe("The GitHub token auth scheme", function () {
 					{
 						config : {
 							auth : {
-								mode    : "try",
+								mode     : "try",
 								strategy : "token-basic"
 							}
 						},
@@ -675,21 +677,147 @@ describe("The GitHub token auth scheme", function () {
 	});
 
 	describe("configured with an organization", function () {
+		var server;
+
+		function orgRequest () {
+			return nock(GITHUB_API)
+			.matchHeader("Authorization", basicAuth(TOKEN, OAUTH))
+			.get("/orgs/" + ORGANIZATION + "/members/" + LOGIN);
+		}
+
+		before(function (done) {
+			server = new Hapi.Server();
+			server.pack.register(plugin, function (error) {
+				server.auth.strategy("token-org", "github-token", {
+					clientId     : CLIENT_ID,
+					clientSecret : CLIENT_SECRET,
+					organization : ORGANIZATION
+				});
+
+				server.route(
+					{
+						config : {
+							auth : {
+								mode     : "try",
+								strategy : "token-org"
+							}
+						},
+
+						handler : function (request, reply) {
+							reply(request.auth);
+						},
+
+						method : "GET",
+						path   : "/"
+					}
+				);
+
+				done(error);
+			});
+		});
 
 		describe("with a token belonging to the organization", function () {
+			var orgNock;
+			var response;
+			var tokenNock;
 
-			it("verifies organization membership with GitHub");
+			before(function (done) {
+				tokenNock = tokenRequest().reply(
+					200,
+					{
+						token : TOKEN,
+						user  : {
+							login : LOGIN
+						}
+					}
+				);
 
-			it("returns the username");
+				orgNock = orgRequest().reply(204);
 
-			it("permits the requets");
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
+
+			it("verifies organization membership with GitHub", function (done) {
+				expect(tokenNock.isDone(), "no token request").to.be.true;
+				expect(orgNock.isDone(), "no org request").to.be.true;
+				done();
+			});
+
+			it("returns the username", function (done) {
+				expect(response.result.credentials, "no username")
+				.to.have.property("username");
+
+				done();
+			});
+
+			it("returns the organization", function (done) {
+				expect(response.result.credentials, "no organization")
+				.to.have.property("organization", ORGANIZATION);
+
+				done();
+			});
+
+			it("permits the requets", function (done) {
+				expect(response.result.isAuthenticated, "prohibitted")
+				.to.be.true;
+
+				done();
+			});
 		});
 
 		describe("with a token not belonging to the organization", function () {
+			var orgNock;
+			var response;
+			var tokenNock;
 
-			it("returns the username");
+			before(function (done) {
+				tokenNock = tokenRequest().reply(
+					200,
+					{
+						token : TOKEN,
+						user  : {
+							login : LOGIN
+						}
+					}
+				);
 
-			it("prohibits the request");
+				orgNock = orgRequest().reply(404);
+
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
+
+			it("verifies organization membership with GitHub", function (done) {
+				expect(tokenNock.isDone(), "no token request").to.be.true;
+				expect(orgNock.isDone(), "no org request").to.be.true;
+				done();
+			});
+
+			it("returns the username", function (done) {
+				expect(response.result.credentials, "no username")
+				.to.have.property("username", LOGIN);
+
+				done();
+			});
+
+			it("does not return the organization", function (done) {
+				expect(response.result.credentials, "found organization")
+				.not.to.have.property("organization");
+
+				done();
+			});
+
+			it("prohibits the request", function (done) {
+				expect(response.result.isAuthenticated, "permitted")
+				.to.be.false;
+
+				done();
+			});
 		});
 	});
 
