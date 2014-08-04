@@ -645,9 +645,16 @@ describe("The GitHub token auth scheme", function () {
 		});
 
 		describe("without a token", function () {
+			var github;
 			var response;
 
 			before(function (done) {
+				// Catch-all for unexpected GET requests.
+				github = nock(GITHUB_API)
+				.filteringPath(/.*/, "/")
+				.get("/")
+				.reply(200);
+
 				server.inject(
 					{
 						method : "GET",
@@ -658,6 +665,16 @@ describe("The GitHub token auth scheme", function () {
 						done();
 					}
 				);
+			});
+
+			after(function (done) {
+				nock.cleanAll();
+				done();
+			});
+
+			it("does not contact GitHub", function (done) {
+				expect(github.isDone(), "GitHub request").to.be.false;
+				done();
 			});
 
 			it("does not return the username", function (done) {
