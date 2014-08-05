@@ -48,6 +48,28 @@ describe("The GitHub basic auth scheme", function () {
 		);
 	}
 
+	function orgRequest () {
+		return nock(GITHUB_API)
+		.matchHeader("Authorization", basicAuth(USERNAME, PASSWORD))
+		.get("/orgs/" + ORGANIZATION + "/members/" + LOGIN);
+	}
+
+	function tokenRequest () {
+		return nock(GITHUB_API)
+		.matchHeader("Authorization", basicAuth(USERNAME, PASSWORD))
+		.put(
+			"/authorizations/clients/" + CLIENT_ID,
+			/* jshint -W106 */
+			{
+				client_secret : CLIENT_SECRET,
+				note          : NOTE,
+				note_url      : URL,
+				scopes        : SCOPES
+			}
+			/* jshint +W106 */
+		);
+	}
+
 	function userRequest () {
 		return nock(GITHUB_API)
 		.matchHeader("Authorization", basicAuth(USERNAME, PASSWORD))
@@ -234,22 +256,6 @@ describe("The GitHub basic auth scheme", function () {
 	describe("configured with client credentials", function () {
 		var server;
 
-		function tokenRequest () {
-			return nock(GITHUB_API)
-			.matchHeader("Authorization", basicAuth(USERNAME, PASSWORD))
-			.put(
-				"/authorizations/clients/" + CLIENT_ID,
-				/* jshint -W106 */
-				{
-					client_secret : CLIENT_SECRET,
-					note          : NOTE,
-					note_url      : URL,
-					scopes        : SCOPES
-				}
-				/* jshint +W106 */
-			);
-		}
-
 		before(function (done) {
 			server = new Hapi.Server();
 			server.pack.register(plugin, function (error) {
@@ -419,12 +425,6 @@ describe("The GitHub basic auth scheme", function () {
 	describe("configured with an organization", function () {
 		var server;
 
-		function orgRequest () {
-			return nock(GITHUB_API)
-			.matchHeader("Authorization", basicAuth(USERNAME, PASSWORD))
-			.get("/orgs/" + ORGANIZATION + "/members/" + LOGIN);
-		}
-
 		before(function (done) {
 			server = new Hapi.Server();
 			server.pack.register(plugin, function (error) {
@@ -499,7 +499,7 @@ describe("The GitHub basic auth scheme", function () {
 			});
 		});
 
-		describe("given credentials for a non-member of the organization", function () {
+		describe("given credentials for a non-member", function () {
 			var orgNock;
 			var response;
 			var userNock;
@@ -535,6 +535,164 @@ describe("The GitHub basic auth scheme", function () {
 			it("does not return the organization", function (done) {
 				expect(response.result.credentials, "organization")
 				.not.to.have.property("organization");
+
+				done();
+			});
+
+			it("prohibits the request", function (done) {
+				expect(response.result.isAuthenticated, "permitted").to.be.false;
+				done();
+			});
+		});
+	});
+
+	describe("configured with client credentials and an organization", function () {
+		var server;
+
+		before(function (done) {
+			server = new Hapi.Server();
+			server.pack.register(plugin, function (error) {
+
+				server.auth.strategy("client-org", "github-basic", {
+					clientId     : CLIENT_ID,
+					clientSecret : CLIENT_SECRET,
+					note         : NOTE,
+					scopes       : SCOPES,
+					url          : URL,
+
+					organization : ORGANIZATION
+				});
+
+				server.route({
+					config : {
+						auth : {
+							mode     : "try",
+							strategy : "client-org"
+						}
+					},
+
+					handler : function (request, reply) {
+						reply(request.auth);
+					},
+
+					method : "GET",
+					path   : "/"
+				});
+
+				done(error);
+			});
+		});
+
+		describe("given credentials for a member of the organization", function () {
+			var orgNock;
+			var response;
+			var tokenNock;
+			var userNock;
+
+			before(function (done) {
+				orgNock   = orgRequest().reply(204);
+				tokenNock = tokenRequest().reply(200, { token : TOKEN });
+				userNock  = userRequest().reply(200, { login : LOGIN });
+
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
+
+			after(function (done) {
+				nock.cleanAll();
+				done();
+			});
+
+			it("verifies membership with GitHub", function (done) {
+				expect(userNock.isDone(), "authentication request").to.be.true;
+				expect(orgNock.isDone(), "membership request").to.be.true;
+				done();
+			});
+
+			it("requests a token", function (done) {
+				expect(tokenNock.isDone(), "token request").to.be.true;
+				done();
+			});
+
+			it("returns the username", function (done) {
+				expect(response.result.credentials, "no username")
+				.to.have.property("username", LOGIN);
+
+				done();
+			});
+
+			it("returns the organization", function (done) {
+				expect(response.result.credentials, "no organization")
+				.to.have.property("organization", ORGANIZATION);
+
+				done();
+			});
+
+			it("returns a token", function (done) {
+				expect(response.result.artifacts, "no token")
+				.to.have.property("token", TOKEN);
+
+				done();
+			});
+
+			it("permits the request", function (done) {
+				expect(response.result.isAuthenticated, "prohibitted").to.be.true;
+				done();
+			});
+		});
+
+		describe("given credentials for a non-member", function () {
+			var orgNock;
+			var response;
+			var tokenNock;
+			var userNock;
+
+			before(function (done) {
+				orgNock   = orgRequest().reply(404);
+				tokenNock = tokenRequest().reply(500);
+				userNock  = userRequest().reply(200, { login : LOGIN });
+
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
+
+			after(function (done) {
+				nock.cleanAll();
+				done();
+			});
+
+			it("verifies membership with GitHub", function (done) {
+				expect(userNock.isDone(), "authentication request").to.be.true;
+				expect(orgNock.isDone(), "membership request").to.be.true;
+				done();
+			});
+
+			it("does not request a token", function (done) {
+				expect(tokenNock.isDone(), "token request").to.be.false;
+				done();
+			});
+
+			it("returns the username", function (done) {
+				expect(response.result.credentials, "no username")
+				.to.have.property("username", LOGIN);
+
+				done();
+			});
+
+			it("does not return the organization", function (done) {
+				expect(response.result.credentials, "organization")
+				.not.to.have.property("organization");
+
+				done();
+			});
+
+			it("does not return a token", function (done) {
+				expect(response.result.artifacts, "token")
+				.not.to.have.property("token");
 
 				done();
 			});
