@@ -39,6 +39,17 @@ returned by [Hapi][hapi].
 		url          : <a note URL>
 	});
 
+### Organization Membership
+
+If the basic scheme is configured with an organization name, then authenticated
+users will be required to be a member of the specified organization. When
+generating tokens, the token will only be requested if the user has been
+authenticated and also belongs to the specified organization.
+
+	server.auth.strategy("basic-org", "github-basic", {
+		organization : <org name>
+	});
+
 ## Token Auth
 
 ### Simple Validation
@@ -56,7 +67,7 @@ valid.
 If the token scheme is configured with an organization name, then any valid
 tokens will also be required to be authorized with the specified organization.
 
-	server.auth.strategy("token", "github-token", {
+	server.auth.strategy("token-org", "github-token", {
 		clientId     : <client ID>,
 		clientSecret : <client secret>,
 		organization : <org name>
