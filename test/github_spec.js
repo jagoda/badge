@@ -416,16 +416,139 @@ describe("The GitHub basic auth scheme", function () {
 		});
 	});
 
-	describe("configuration", function () {
-		var configuration = {
-			clientId     : CLIENT_ID,
-			clientSecret : CLIENT_SECRET,
-			note         : NOTE,
-			scopes       : SCOPES,
-			url          : URL
-		};
+	describe("configured with an organization", function () {
+		var server;
 
-		function testConfiguration (key, done) {
+		function orgRequest () {
+			return nock(GITHUB_API)
+			.matchHeader("Authorization", basicAuth(USERNAME, PASSWORD))
+			.get("/orgs/" + ORGANIZATION + "/members/" + LOGIN);
+		}
+
+		before(function (done) {
+			server = new Hapi.Server();
+			server.pack.register(plugin, function (error) {
+
+				server.auth.strategy("basic-org", "github-basic", {
+					organization : ORGANIZATION
+				});
+
+				server.route({
+					config : {
+						auth : {
+							mode     : "try",
+							strategy : "basic-org"
+						}
+					},
+
+					handler : function (request, reply) {
+						reply(request.auth);
+					},
+
+					method : "GET",
+					path   : "/"
+				});
+
+				done(error);
+			});
+		});
+
+		describe("given credentials for a member of the organization", function () {
+			var orgNock;
+			var response;
+			var userNock;
+
+			before(function (done) {
+				userNock = userRequest().reply(200, { login : LOGIN });
+				orgNock  = orgRequest().reply(204);
+
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
+
+			after(function (done) {
+				nock.cleanAll();
+				done();
+			});
+
+			it("verifies organization membership with GitHub", function (done) {
+				expect(userNock.isDone(), "authentication request").to.be.true;
+				expect(orgNock.isDone(), "membership request").to.be.true;
+				done();
+			});
+
+			it("returns the username", function (done) {
+				expect(response.result.credentials, "no username")
+				.to.have.property("username", LOGIN);
+
+				done();
+			});
+
+			it("returns the organization", function (done) {
+				expect(response.result.credentials, "no organization")
+				.to.have.property("organization", ORGANIZATION);
+
+				done();
+			});
+
+			it("permits the request", function (done) {
+				expect(response.result.isAuthenticated, "prohibitted").to.be.true;
+				done();
+			});
+		});
+
+		describe("given credentials for a non-member of the organization", function () {
+			var orgNock;
+			var response;
+			var userNock;
+
+			before(function (done) {
+				userNock = userRequest().reply(200, { login : LOGIN });
+				orgNock  = orgRequest().reply(404);
+
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
+
+			after(function (done) {
+				nock.cleanAll();
+				done();
+			});
+
+			it("verifies membership with GitHub", function (done) {
+				expect(userNock.isDone(), "authentication request").to.be.true;
+				expect(orgNock.isDone(), "membership request").to.be.true;
+				done();
+			});
+
+			it("returns the username", function (done) {
+				expect(response.result.credentials, "no username")
+				.to.have.property("username", LOGIN);
+
+				done();
+			});
+
+			it("does not return the organization", function (done) {
+				expect(response.result.credentials, "organization")
+				.not.to.have.property("organization");
+
+				done();
+			});
+
+			it("prohibits the request", function (done) {
+				expect(response.result.isAuthenticated, "permitted").to.be.false;
+				done();
+			});
+		});
+	});
+
+	describe("configuration", function () {
+
+		function testConfiguration (configuration, key, done) {
 			var server  = new Hapi.Server();
 			var options = _.clone(configuration);
 
@@ -434,30 +557,48 @@ describe("The GitHub basic auth scheme", function () {
 
 				expect(function () {
 					server.auth.strategy("error", "github-basic", options);
-				}).to.throw(new RegExp(key, "i"));
+				}).to.throw(/client configuration or organization/i);
 
 				done();
 			});
 		}
 
-		it("requires a client ID", function (done) {
-			testConfiguration("clientId", done);
+		describe("without an organization", function () {
+			var configuration = {
+				clientId     : CLIENT_ID,
+				clientSecret : CLIENT_SECRET,
+				note         : NOTE,
+				scopes       : SCOPES,
+				url          : URL
+			};
+
+			it("requires a client ID", function (done) {
+				testConfiguration(configuration, "clientId", done);
+			});
+
+			it("requires a client secret", function (done) {
+				testConfiguration(configuration, "clientSecret", done);
+			});
+
+			it("requires a note", function (done) {
+				testConfiguration(configuration, "note", done);
+			});
+
+			it("requires a scope list", function (done) {
+				testConfiguration(configuration, "scopes", done);
+			});
+
+			it("requires a URL", function (done) {
+				testConfiguration(configuration, "url", done);
+			});
 		});
 
-		it("requires a client secret", function (done) {
-			testConfiguration("clientSecret", done);
-		});
+		describe("without application configuration", function () {
+			var configuration = {};
 
-		it("requires a note", function (done) {
-			testConfiguration("note", done);
-		});
-
-		it("requires a scope list", function (done) {
-			testConfiguration("scopes", done);
-		});
-
-		it("requires a URL", function (done) {
-			testConfiguration("url", done);
+			it("requires an organization", function (done) {
+				testConfiguration(configuration, "organization", done);
+			});
 		});
 	});
 });
