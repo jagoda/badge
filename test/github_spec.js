@@ -37,6 +37,26 @@ function basicAuth (username, password) {
 		(new Buffer(username + ":" + password)).toString("base64");
 }
 
+function createTestRoute (server, strategy) {
+	server.route(
+		{
+			config : {
+				auth : {
+					mode    : "try",
+					strategy : strategy
+				}
+			},
+
+			handler : function (request, reply) {
+				reply(request.auth);
+			},
+
+			method : "GET",
+			path   : "/"
+		}
+	);
+}
+
 describe("The GitHub basic auth scheme", function () {
 
 	function assertChallenge (response) {
@@ -115,23 +135,7 @@ describe("The GitHub basic auth scheme", function () {
 			server = new Hapi.Server();
 			server.pack.register(plugin, function (error) {
 				server.auth.strategy("default", "github-basic");
-				server.route(
-					{
-						config : {
-							auth : {
-								mode    : "try",
-								strategy : "default"
-							}
-						},
-
-						handler : function (request, reply) {
-							reply(request.auth);
-						},
-
-						method : "GET",
-						path   : "/"
-					}
-				);
+				createTestRoute(server, "default");
 				done(error);
 			});
 		});
@@ -307,22 +311,7 @@ describe("The GitHub basic auth scheme", function () {
 					}
 				});
 
-				server.route({
-					config : {
-						auth : {
-							mode     : "try",
-							strategy : "generate-token"
-						}
-					},
-
-					handler : function (request, reply) {
-						reply(request.auth);
-					},
-
-					method : "GET",
-					path   : "/"
-				});
-
+				createTestRoute(server, "generate-token");
 				done(error);
 			});
 		});
@@ -482,22 +471,7 @@ describe("The GitHub basic auth scheme", function () {
 					organization : ORGANIZATION
 				});
 
-				server.route({
-					config : {
-						auth : {
-							mode     : "try",
-							strategy : "basic-org"
-						}
-					},
-
-					handler : function (request, reply) {
-						reply(request.auth);
-					},
-
-					method : "GET",
-					path   : "/"
-				});
-
+				createTestRoute(server, "basic-org");
 				done(error);
 			});
 		});
@@ -624,22 +598,7 @@ describe("The GitHub basic auth scheme", function () {
 					organization : ORGANIZATION
 				});
 
-				server.route({
-					config : {
-						auth : {
-							mode     : "try",
-							strategy : "client-org"
-						}
-					},
-
-					handler : function (request, reply) {
-						reply(request.auth);
-					},
-
-					method : "GET",
-					path   : "/"
-				});
-
+				createTestRoute(server, "client-org");
 				done(error);
 			});
 		});
@@ -786,22 +745,7 @@ describe("The GitHub basic auth scheme", function () {
 					realm : REALM
 				});
 
-				server.route({
-					config : {
-						auth : {
-							mode     : "try",
-							strategy : "basic-realm"
-						}
-					},
-
-					handler : function (request, reply) {
-						reply(request.auth);
-					},
-
-					method : "GET",
-					path   : "/"
-				});
-
+				createTestRoute(server, "basic-realm");
 				done(error);
 			});
 		});
@@ -912,6 +856,9 @@ describe("The GitHub token auth scheme", function () {
 
 		expect(response.result.error.output.headers[CHALLENGE], "challeng scheme")
 		.to.contain(TOKEN_SCHEME);
+
+		expect(response.result.error.output.headers[CHALLENGE], "realm")
+		.not.to.contain("realm=");
 	}
 
 	function assertNoChallenge (response) {
@@ -959,24 +906,7 @@ describe("The GitHub token auth scheme", function () {
 					clientSecret : CLIENT_SECRET
 				});
 
-				server.route(
-					{
-						config : {
-							auth : {
-								mode     : "try",
-								strategy : "token-basic"
-							}
-						},
-
-						handler : function (request, reply) {
-							reply(request.auth);
-						},
-
-						method : "GET",
-						path   : "/"
-					}
-				);
-
+				createTestRoute(server, "token-basic");
 				done(error);
 			});
 		});
@@ -1180,24 +1110,7 @@ describe("The GitHub token auth scheme", function () {
 					organization : ORGANIZATION
 				});
 
-				server.route(
-					{
-						config : {
-							auth : {
-								mode     : "try",
-								strategy : "token-org"
-							}
-						},
-
-						handler : function (request, reply) {
-							reply(request.auth);
-						},
-
-						method : "GET",
-						path   : "/"
-					}
-				);
-
+				createTestRoute(server, "token-org");
 				done(error);
 			});
 		});
@@ -1312,6 +1225,54 @@ describe("The GitHub token auth scheme", function () {
 
 			it("presents an authentication challenge", function (done) {
 				assertChallenge(response);
+				done();
+			});
+		});
+	});
+
+	describe("configured with a realm", function () {
+		var server;
+
+		before(function (done) {
+			server = new Hapi.Server();
+			server.pack.register(plugin, function () {
+				server.auth.strategy("token-realm", "github-token", {
+					clientId     : CLIENT_ID,
+					clientSecret : CLIENT_SECRET,
+					realm        : REALM
+				});
+
+				createTestRoute(server, "token-realm");
+				done();
+			});
+		});
+
+		describe("failing to validate a token", function () {
+			var response;
+			var tokenNock;
+
+			before(function (done) {
+				tokenNock = tokenRequest().reply(404);
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
+
+			after(function (done) {
+				nock.cleanAll();
+				done();
+			});
+
+			it("includes a realm with the authentication challenge", function (done) {
+				expect(response.result.error, "no error").to.be.an.instanceOf(Error);
+
+				expect(response.result.error.output.headers, "no challenge")
+				.to.have.property(CHALLENGE);
+
+				expect(response.result.error.output.headers[CHALLENGE], "realm")
+				.to.contain("realm=\"" + REALM + "\"");
+
 				done();
 			});
 		});
