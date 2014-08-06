@@ -75,4 +75,14 @@ tokens will also be required to be authorized with the specified organization.
 		organization : <org name>
 	});
 
+## Realms
+
+Both authentication methods are capable of including a realm with the
+authentication challenge. To include a realm, simply supply a realm as part of
+the strategy configuration:
+
+	server.auth.strategy("realm", "github-basic", {
+		realm : <realm>
+	});
+
 [Hapi]: https://github.com/spumko/hapi "Hapi"
