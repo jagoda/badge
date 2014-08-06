@@ -29,6 +29,7 @@ var URL           = "http://example.com";
 
 var BASIC_SCHEME = "Basic";
 var CHALLENGE    = "WWW-Authenticate";
+var REALM        = "a realm";
 var TOKEN_SCHEME = "token";
 
 function basicAuth (username, password) {
@@ -46,6 +47,9 @@ describe("The GitHub basic auth scheme", function () {
 
 		expect(response.result.error.output.headers[CHALLENGE], "challenge scheme")
 		.to.contain(BASIC_SCHEME);
+
+		expect(response.result.error.output.headers[CHALLENGE], "realm")
+		.not.to.contain("realm=");
 	}
 
 	function assertNoChallenge (response) {
@@ -766,6 +770,68 @@ describe("The GitHub basic auth scheme", function () {
 
 			it("prohibits the request", function (done) {
 				expect(response.result.isAuthenticated, "permitted").to.be.false;
+				done();
+			});
+		});
+	});
+
+	describe("configured with a realm", function () {
+		var server;
+
+		before(function (done) {
+			server = new Hapi.Server();
+			server.pack.register(plugin, function (error) {
+
+				server.auth.strategy("basic-realm", "github-basic", {
+					realm : REALM
+				});
+
+				server.route({
+					config : {
+						auth : {
+							mode     : "try",
+							strategy : "basic-realm"
+						}
+					},
+
+					handler : function (request, reply) {
+						reply(request.auth);
+					},
+
+					method : "GET",
+					path   : "/"
+				});
+
+				done(error);
+			});
+		});
+
+		describe("failing to authenticate a user", function () {
+			var response;
+			var userNock;
+
+			before(function (done) {
+				userNock = userRequest().reply(401);
+				authenticate(server, function (_response_) {
+					response = _response_;
+					done();
+				});
+			});
+
+			after(function (done) {
+				nock.cleanAll();
+				done();
+			});
+
+			it("includes a realm in the authentication challenge", function (done) {
+				expect(response.result.error, "no error").to.be.an.instanceOf(Error);
+
+				expect(response.result.error.output.headers, "challenge")
+				.to.have.property(CHALLENGE);
+
+				expect(response.result.error.output.headers[CHALLENGE], "no realm")
+				.to.contain("realm=\"" + REALM +"\"");
+
 				done();
 			});
 		});
