@@ -19,6 +19,7 @@ var OAUTH        = "x-oauth-basic";
 var ORGANIZATION = "octocats";
 var PASSWORD     = "password";
 var TOKEN        = "token";
+var USER_AGENT   = "Nipple";
 var USERNAME     = "testy";
 
 var CLIENT_ID     = "id";
@@ -93,12 +94,14 @@ describe("The GitHub basic auth scheme", function () {
 	function orgRequest () {
 		return nock(GITHUB_API)
 		.matchHeader("Authorization", basicAuth(USERNAME, PASSWORD))
+		.matchHeader("User-Agent", USER_AGENT)
 		.get("/orgs/" + ORGANIZATION + "/members/" + LOGIN);
 	}
 
 	function tokenRequest () {
 		return nock(GITHUB_API)
 		.matchHeader("Authorization", basicAuth(USERNAME, PASSWORD))
+		.matchHeader("User-Agent", USER_AGENT)
 		.put(
 			"/authorizations/clients/" + CLIENT_ID,
 			/* jshint -W106 */
@@ -115,6 +118,7 @@ describe("The GitHub basic auth scheme", function () {
 	function userRequest () {
 		return nock(GITHUB_API)
 		.matchHeader("Authorization", basicAuth(USERNAME, PASSWORD))
+		.matchHeader("User-Agent", USER_AGENT)
 		.get("/user");
 	}
 
@@ -882,6 +886,7 @@ describe("The GitHub token auth scheme", function () {
 	function tokenRequest () {
 		return nock(GITHUB_API)
 		.matchHeader("Authorization", basicAuth(CLIENT_ID, CLIENT_SECRET))
+		.matchHeader("User-Agent", USER_AGENT)
 		.get("/applications/" + CLIENT_ID + "/tokens/" + TOKEN);
 	}
 
@@ -1098,6 +1103,7 @@ describe("The GitHub token auth scheme", function () {
 		function orgRequest () {
 			return nock(GITHUB_API)
 			.matchHeader("Authorization", basicAuth(TOKEN, OAUTH))
+			.matchHeader("User-Agent", USER_AGENT)
 			.get("/orgs/" + ORGANIZATION + "/members/" + LOGIN);
 		}
 
