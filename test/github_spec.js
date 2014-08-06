@@ -1264,7 +1264,7 @@ describe("The GitHub token auth scheme", function () {
 		}
 
 		it("must be provided", function (done) {
-			testConfiguration(undefined, /client configuration/i, done);
+			testConfiguration(undefined, /missing/i, done);
 		});
 
 		it("requires a client ID", function (done) {
@@ -1273,6 +1273,16 @@ describe("The GitHub token auth scheme", function () {
 
 		it("requires a client secret", function (done) {
 			testConfiguration({ clientId : CLIENT_ID }, /clientSecret/i, done);
+		});
+
+		it("does not allow unknown options", function (done) {
+			var configuration = {
+				clientId     : CLIENT_ID,
+				clientSecret : CLIENT_SECRET,
+				foo          : "bar"
+			};
+
+			testConfiguration(configuration, /not allowed/i, done);
 		});
 	});
 });
