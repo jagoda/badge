@@ -27,12 +27,30 @@ var NOTE          = "an app";
 var SCOPES        = [ "a scope" ];
 var URL           = "http://example.com";
 
+var BASIC_SCHEME = "Basic";
+var CHALLENGE    = "WWW-Authenticate";
+var TOKEN_SCHEME = "token";
+
 function basicAuth (username, password) {
-	return "Basic " +
+	return BASIC_SCHEME + " " +
 		(new Buffer(username + ":" + password)).toString("base64");
 }
 
 describe("The GitHub basic auth scheme", function () {
+
+	function assertChallenge (response) {
+		expect(response.result.error, "no error").to.be.an.instanceOf(Error);
+
+		expect(response.result.error.output.headers, "challenge")
+		.to.have.property(CHALLENGE);
+
+		expect(response.result.error.output.headers[CHALLENGE], "challenge scheme")
+		.to.contain(BASIC_SCHEME);
+	}
+
+	function assertNoChallenge (response) {
+		expect(response.result.error, "challeng").not.to.exist;
+	}
 
 	function authenticate (server, callback) {
 		server.inject(
@@ -149,6 +167,11 @@ describe("The GitHub basic auth scheme", function () {
 
 				done();
 			});
+
+			it("does not present an authentication challenge", function (done) {
+				assertNoChallenge(response);
+				done();
+			});
 		});
 
 		describe("with invalid credentials", function () {
@@ -165,6 +188,11 @@ describe("The GitHub basic auth scheme", function () {
 
 			it("verifies the credentials with GitHub", function (done) {
 				expect(request.isDone(), "no GitHub request").to.be.true;
+				done();
+			});
+
+			it("presents an authentication challenge", function (done) {
+				assertChallenge(response);
 				done();
 			});
 
@@ -235,6 +263,11 @@ describe("The GitHub basic auth scheme", function () {
 						done();
 					}
 				);
+			});
+
+			it("presents an authentication challenge", function (done) {
+				assertChallenge(response);
+				done();
 			});
 
 			it("does not return a username", function (done) {
@@ -314,6 +347,11 @@ describe("The GitHub basic auth scheme", function () {
 				done();
 			});
 
+			it("does not present an authentication challenge", function (done) {
+				assertNoChallenge(response);
+				done();
+			});
+
 			it("returns the username", function (done) {
 				expect(response.result.credentials, "no username")
 				.to.have.property("username", LOGIN);
@@ -356,6 +394,11 @@ describe("The GitHub basic auth scheme", function () {
 
 			it("verifies the credentials with GitHub", function (done) {
 				expect(userNock.isDone(), "no GitHub request").to.be.true;
+				done();
+			});
+
+			it("presents an authentication challenge", function (done) {
+				assertChallenge(response);
 				done();
 			});
 
@@ -479,6 +522,11 @@ describe("The GitHub basic auth scheme", function () {
 				done();
 			});
 
+			it("does not present an authentication challenge", function (done) {
+				assertNoChallenge(response);
+				done();
+			});
+
 			it("returns the username", function (done) {
 				expect(response.result.credentials, "no username")
 				.to.have.property("username", LOGIN);
@@ -522,6 +570,11 @@ describe("The GitHub basic auth scheme", function () {
 			it("verifies membership with GitHub", function (done) {
 				expect(userNock.isDone(), "authentication request").to.be.true;
 				expect(orgNock.isDone(), "membership request").to.be.true;
+				done();
+			});
+
+			it("presents an authentication challenge", function (done) {
+				assertChallenge(response);
 				done();
 			});
 
@@ -611,6 +664,11 @@ describe("The GitHub basic auth scheme", function () {
 				done();
 			});
 
+			it("does not present an authentication challenge", function (done) {
+				assertNoChallenge(response);
+				done();
+			});
+
 			it("requests a token", function (done) {
 				expect(tokenNock.isDone(), "token request").to.be.true;
 				done();
@@ -668,6 +726,11 @@ describe("The GitHub basic auth scheme", function () {
 			it("verifies membership with GitHub", function (done) {
 				expect(userNock.isDone(), "authentication request").to.be.true;
 				expect(orgNock.isDone(), "membership request").to.be.true;
+				done();
+			});
+
+			it("presents an authentication challenge", function (done) {
+				assertChallenge(response);
 				done();
 			});
 
@@ -763,11 +826,25 @@ describe("The GitHub basic auth scheme", function () {
 
 describe("The GitHub token auth scheme", function () {
 
+	function assertChallenge (response) {
+		expect(response.result.error, "no error").to.be.an.instanceOf(Error);
+
+		expect(response.result.error.output.headers, "challenge")
+		.to.have.property(CHALLENGE);
+
+		expect(response.result.error.output.headers[CHALLENGE], "challeng scheme")
+		.to.contain(TOKEN_SCHEME);
+	}
+
+	function assertNoChallenge (response) {
+		expect(response.result.error, "challenge").not.to.exist;
+	}
+
 	function authenticate (server, done) {
 		server.inject(
 			{
 				headers : {
-					authorization : "token " + TOKEN
+					authorization : TOKEN_SCHEME + " " + TOKEN
 				},
 
 				method : "GET",
@@ -865,6 +942,11 @@ describe("The GitHub token auth scheme", function () {
 
 				done();
 			});
+
+			it("does not present an authentication challenge", function (done) {
+				assertNoChallenge(response);
+				done();
+			});
 		});
 
 		describe("with an invalid token", function () {
@@ -896,6 +978,11 @@ describe("The GitHub token auth scheme", function () {
 				expect(response.result.isAuthenticated, "permitted")
 				.to.be.false;
 
+				done();
+			});
+
+			it("presents an authentication challenge", function (done) {
+				assertChallenge(response);
 				done();
 			});
 		});
@@ -987,6 +1074,11 @@ describe("The GitHub token auth scheme", function () {
 				expect(response.result.isAuthenticated, "permitted")
 				.to.be.false;
 
+				done();
+			});
+
+			it("presents an authentication challenge", function (done) {
+				assertChallenge(response);
 				done();
 			});
 		});
@@ -1082,6 +1174,11 @@ describe("The GitHub token auth scheme", function () {
 
 				done();
 			});
+
+			it("does not present an authentication challenge", function (done) {
+				assertNoChallenge(response);
+				done();
+			});
 		});
 
 		describe("with a token not belonging to the organization", function () {
@@ -1132,6 +1229,11 @@ describe("The GitHub token auth scheme", function () {
 				expect(response.result.isAuthenticated, "permitted")
 				.to.be.false;
 
+				done();
+			});
+
+			it("presents an authentication challenge", function (done) {
+				assertChallenge(response);
 				done();
 			});
 		});
