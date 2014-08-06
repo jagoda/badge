@@ -32,11 +32,13 @@ login attempt will generate a new token that is added to the `artifacts` object
 returned by [Hapi][hapi].
 
 	server.auth.strategy("generate-token", "github-basic", {
-		clientId     : <client ID>,
-		clientSecret : <client secret>,
-		note         : <a description>,
-		scopes       : <desired scopes>,
-		url          : <a note URL>
+		application : {
+			clientId     : <client ID>,
+			clientSecret : <client secret>,
+			note         : <a description>,
+			scopes       : <desired scopes>,
+			url          : <a note URL>
+		}
 	});
 
 ### Organization Membership
