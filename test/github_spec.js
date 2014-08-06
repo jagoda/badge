@@ -286,7 +286,7 @@ describe("The GitHub basic auth scheme", function () {
 		});
 	});
 
-	describe("configured with client credentials", function () {
+	describe("configured with application credentials", function () {
 		var server;
 
 		before(function (done) {
@@ -294,11 +294,13 @@ describe("The GitHub basic auth scheme", function () {
 			server.pack.register(plugin, function (error) {
 
 				server.auth.strategy("generate-token", "github-basic", {
-					clientId     : CLIENT_ID,
-					clientSecret : CLIENT_SECRET,
-					note         : NOTE,
-					scopes       : SCOPES,
-					url          : URL
+					application : {
+						clientId     : CLIENT_ID,
+						clientSecret : CLIENT_SECRET,
+						note         : NOTE,
+						scopes       : SCOPES,
+						url          : URL
+					}
 				});
 
 				server.route({
@@ -599,7 +601,7 @@ describe("The GitHub basic auth scheme", function () {
 		});
 	});
 
-	describe("configured with client credentials and an organization", function () {
+	describe("configured with application credentials and an organization", function () {
 		var server;
 
 		before(function (done) {
@@ -607,11 +609,13 @@ describe("The GitHub basic auth scheme", function () {
 			server.pack.register(plugin, function (error) {
 
 				server.auth.strategy("client-org", "github-basic", {
-					clientId     : CLIENT_ID,
-					clientSecret : CLIENT_SECRET,
-					note         : NOTE,
-					scopes       : SCOPES,
-					url          : URL,
+					application : {
+						clientId     : CLIENT_ID,
+						clientSecret : CLIENT_SECRET,
+						note         : NOTE,
+						scopes       : SCOPES,
+						url          : URL
+					},
 
 					organization : ORGANIZATION
 				});
@@ -769,57 +773,65 @@ describe("The GitHub basic auth scheme", function () {
 
 	describe("configuration", function () {
 
-		function testConfiguration (configuration, key, done) {
-			var server  = new Hapi.Server();
-			var options = _.clone(configuration);
+		it("cannot have an unsupported option", function (done) {
+			var server = new Hapi.Server();
 
 			server.pack.register(plugin, function () {
-				delete options[key];
+
+				expect(function () {
+					server.auth.strategy("error", "github-basic", { foo : "bar" });
+				}).to.throw(/not allowed/i);
+
+				done();
+			});
+		});
+	});
+
+	describe("application configuration", function () {
+		var configuration = {
+			clientId     : CLIENT_ID,
+			clientSecret : CLIENT_SECRET,
+			note         : NOTE,
+			scopes       : SCOPES,
+			url          : URL
+		};
+
+		function testConfiguration (configuration, key, done) {
+			var server  = new Hapi.Server();
+
+			var options = {
+				application : _.clone(configuration)
+			};
+
+			server.pack.register(plugin, function () {
+				delete options.application[key];
 
 				expect(function () {
 					server.auth.strategy("error", "github-basic", options);
-				}).to.throw(/client configuration or organization/i);
+				}).to.throw(new RegExp(key, "i"));
 
 				done();
 			});
 		}
 
-		describe("without an organization", function () {
-			var configuration = {
-				clientId     : CLIENT_ID,
-				clientSecret : CLIENT_SECRET,
-				note         : NOTE,
-				scopes       : SCOPES,
-				url          : URL
-			};
-
-			it("requires a client ID", function (done) {
-				testConfiguration(configuration, "clientId", done);
-			});
-
-			it("requires a client secret", function (done) {
-				testConfiguration(configuration, "clientSecret", done);
-			});
-
-			it("requires a note", function (done) {
-				testConfiguration(configuration, "note", done);
-			});
-
-			it("requires a scope list", function (done) {
-				testConfiguration(configuration, "scopes", done);
-			});
-
-			it("requires a URL", function (done) {
-				testConfiguration(configuration, "url", done);
-			});
+		it("requires a client ID", function (done) {
+			testConfiguration(configuration, "clientId", done);
 		});
 
-		describe("without application configuration", function () {
-			var configuration = {};
+		it("requires a client secret", function (done) {
+			testConfiguration(configuration, "clientSecret", done);
+		});
 
-			it("requires an organization", function (done) {
-				testConfiguration(configuration, "organization", done);
-			});
+		it("requires a note", function (done) {
+			testConfiguration(configuration, "note", done);
+		});
+
+		it("requires a scope list", function (done) {
+			testConfiguration(configuration, "scopes", done);
+		});
+
+		it("requires a URL", function (done) {
+			testConfiguration(configuration, "url", done);
 		});
 	});
 });
