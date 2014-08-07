@@ -991,7 +991,9 @@ describe("The GitHub token auth scheme", function () {
 		expect(response.result.error, "challenge").not.to.exist;
 	}
 
-	function authenticate (server, done) {
+	function authenticate (server) {
+		var deferred = Q.defer();
+
 		server.inject(
 			{
 				headers : {
@@ -1001,8 +1003,10 @@ describe("The GitHub token auth scheme", function () {
 				method : "GET",
 				url    : "/"
 			},
-			done
+			deferred.resolve.bind(deferred)
 		);
+
+		return deferred.promise;
 	}
 
 	function tokenRequest () {
@@ -1023,40 +1027,45 @@ describe("The GitHub token auth scheme", function () {
 	});
 
 	describe("using the basic configuration", function () {
-		var server;
 
-		before(function (done) {
-			server = new Hapi.Server();
-			server.pack.register(plugin, function (error) {
+		function createServer () {
+			var server = new Hapi.Server();
+
+			return Q.ninvoke(server.pack, "register", plugin)
+			.then(function () {
 				server.auth.strategy("token-basic", "github-token", {
 					clientId     : CLIENT_ID,
 					clientSecret : CLIENT_SECRET
 				});
 
 				createTestRoute(server, "token-basic");
-				done(error);
+				return server;
 			});
-		});
+		}
 
 		describe("with a valid token", function () {
 			var response;
 			var tokenNock;
 
 			before(function (done) {
-				tokenNock = tokenRequest().reply(
-					200,
-					{
-						token : TOKEN,
-						user  : {
-							login : LOGIN
+				createServer()
+				.then(function (server) {
+					tokenNock = tokenRequest().reply(
+						200,
+						{
+							token : TOKEN,
+							user  : {
+								login : LOGIN
+							}
 						}
-					}
-				);
+					);
 
-				authenticate(server, function (_response_) {
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			it("verifies the token with GitHub", function (done) {
@@ -1089,12 +1098,16 @@ describe("The GitHub token auth scheme", function () {
 			var tokenNock;
 
 			before(function (done) {
-				tokenNock = tokenRequest().reply(404);
+				createServer()
+				.then(function (server) {
+					tokenNock = tokenRequest().reply(404);
 
-				authenticate(server, function (_response_) {
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			it("verifies the token with GitHub", function (done) {
@@ -1127,17 +1140,21 @@ describe("The GitHub token auth scheme", function () {
 			var response;
 
 			before(function (done) {
-				getStub = sinon.stub(
-					Nipple, "get",
-					function (uri, options, callback) {
-						callback(new Error("boom!"));
-					}
-				);
+				createServer()
+				.then(function (server) {
+					getStub = sinon.stub(
+						Nipple, "get",
+						function (uri, options, callback) {
+							callback(new Error("boom!"));
+						}
+					);
 
-				authenticate(server, function (_response_) {
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			after(function (done) {
@@ -1170,22 +1187,30 @@ describe("The GitHub token auth scheme", function () {
 			var response;
 
 			before(function (done) {
-				// Catch-all for unexpected GET requests.
-				github = nock(GITHUB_API)
-				.filteringPath(/.*/, "/")
-				.get("/")
-				.reply(200);
+				createServer()
+				.then(function (server) {
+					var deferred = Q.defer();
 
-				server.inject(
-					{
-						method : "GET",
-						url    : "/"
-					},
-					function (_response_) {
-						response = _response_;
-						done();
-					}
-				);
+					// Catch-all for unexpected GET requests.
+					github = nock(GITHUB_API)
+					.filteringPath(/.*/, "/")
+					.get("/")
+					.reply(200);
+
+					server.inject(
+						{
+							method : "GET",
+							url    : "/"
+						},
+						deferred.resolve.bind(deferred)
+					);
+
+					return deferred.promise;
+				})
+				.then(function (_response_) {
+					response = _response_;
+				})
+				.nodeify(done);
 			});
 
 			after(function (done) {
@@ -1220,7 +1245,22 @@ describe("The GitHub token auth scheme", function () {
 	});
 
 	describe("configured with an organization", function () {
-		var server;
+
+		function createServer () {
+			var server = new Hapi.Server();
+
+			return Q.ninvoke(server.pack, "register", plugin)
+			.then(function () {
+				server.auth.strategy("token-org", "github-token", {
+					clientId     : CLIENT_ID,
+					clientSecret : CLIENT_SECRET,
+					organization : ORGANIZATION
+				});
+
+				createTestRoute(server, "token-org");
+				return server;
+			});
+		}
 
 		function orgRequest () {
 			return nock(GITHUB_API)
@@ -1229,42 +1269,32 @@ describe("The GitHub token auth scheme", function () {
 			.get("/orgs/" + ORGANIZATION + "/members/" + LOGIN);
 		}
 
-		before(function (done) {
-			server = new Hapi.Server();
-			server.pack.register(plugin, function (error) {
-				server.auth.strategy("token-org", "github-token", {
-					clientId     : CLIENT_ID,
-					clientSecret : CLIENT_SECRET,
-					organization : ORGANIZATION
-				});
-
-				createTestRoute(server, "token-org");
-				done(error);
-			});
-		});
-
 		describe("with a token belonging to the organization", function () {
 			var orgNock;
 			var response;
 			var tokenNock;
 
 			before(function (done) {
-				tokenNock = tokenRequest().reply(
-					200,
-					{
-						token : TOKEN,
-						user  : {
-							login : LOGIN
+				createServer()
+				.then(function (server) {
+					tokenNock = tokenRequest().reply(
+						200,
+						{
+							token : TOKEN,
+							user  : {
+								login : LOGIN
+							}
 						}
-					}
-				);
+					);
 
-				orgNock = orgRequest().reply(204);
+					orgNock = orgRequest().reply(204);
 
-				authenticate(server, function (_response_) {
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			it("verifies organization membership with GitHub", function (done) {
@@ -1306,22 +1336,26 @@ describe("The GitHub token auth scheme", function () {
 			var tokenNock;
 
 			before(function (done) {
-				tokenNock = tokenRequest().reply(
-					200,
-					{
-						token : TOKEN,
-						user  : {
-							login : LOGIN
+				createServer()
+				.then(function (server) {
+					tokenNock = tokenRequest().reply(
+						200,
+						{
+							token : TOKEN,
+							user  : {
+								login : LOGIN
+							}
 						}
-					}
-				);
+					);
 
-				orgNock = orgRequest().reply(404);
+					orgNock = orgRequest().reply(404);
 
-				authenticate(server, function (_response_) {
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			it("verifies organization membership with GitHub", function (done) {
@@ -1359,11 +1393,12 @@ describe("The GitHub token auth scheme", function () {
 	});
 
 	describe("configured with a realm", function () {
-		var server;
 
-		before(function (done) {
-			server = new Hapi.Server();
-			server.pack.register(plugin, function () {
+		function createServer () {
+			var server = new Hapi.Server();
+
+			return Q.ninvoke(server.pack, "register", plugin)
+			.then(function () {
 				server.auth.strategy("token-realm", "github-token", {
 					clientId     : CLIENT_ID,
 					clientSecret : CLIENT_SECRET,
@@ -1371,20 +1406,24 @@ describe("The GitHub token auth scheme", function () {
 				});
 
 				createTestRoute(server, "token-realm");
-				done();
+				return server;
 			});
-		});
+		}
 
 		describe("failing to validate a token", function () {
 			var response;
 			var tokenNock;
 
 			before(function (done) {
-				tokenNock = tokenRequest().reply(404);
-				authenticate(server, function (_response_) {
+				createServer()
+				.then(function (server) {
+					tokenNock = tokenRequest().reply(404);
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			after(function (done) {
