@@ -1009,6 +1009,13 @@ describe("The GitHub token auth scheme", function () {
 		return deferred.promise;
 	}
 
+	function orgRequest () {
+		return nock(GITHUB_API)
+		.matchHeader("Authorization", basicAuth(TOKEN, OAUTH))
+		.matchHeader("User-Agent", USER_AGENT)
+		.get("/orgs/" + ORGANIZATION + "/members/" + LOGIN);
+	}
+
 	function tokenRequest () {
 		return nock(GITHUB_API)
 		.matchHeader("Authorization", basicAuth(CLIENT_ID, CLIENT_SECRET))
@@ -1262,13 +1269,6 @@ describe("The GitHub token auth scheme", function () {
 			});
 		}
 
-		function orgRequest () {
-			return nock(GITHUB_API)
-			.matchHeader("Authorization", basicAuth(TOKEN, OAUTH))
-			.matchHeader("User-Agent", USER_AGENT)
-			.get("/orgs/" + ORGANIZATION + "/members/" + LOGIN);
-		}
-
 		describe("with a token belonging to the organization", function () {
 			var orgNock;
 			var response;
@@ -1439,6 +1439,80 @@ describe("The GitHub token auth scheme", function () {
 
 				expect(response.result.error.output.headers[CHALLENGE], "realm")
 				.to.contain("realm=\"" + REALM + "\"");
+
+				done();
+			});
+		});
+	});
+
+	describe("cache", function () {
+
+		function createServer () {
+			var server = new Hapi.Server();
+
+			return Q.ninvoke(server.pack, "register", plugin)
+			.then(function () {
+				server.auth.strategy("caching", "github-token", {
+					clientId     : CLIENT_ID,
+					clientSecret : CLIENT_SECRET,
+					organization : ORGANIZATION
+				});
+
+				createTestRoute(server, "caching");
+				return server;
+			});
+		}
+
+		describe("for a authenticated request", function () {
+			var orgNock;
+			var response1;
+			var response2;
+			var tokenNock;
+
+			before(function (done) {
+				createServer()
+				.then(function (server) {
+					orgNock  = orgRequest().reply(204);
+					tokenNock = tokenRequest().reply(
+						200,
+						{
+							token : TOKEN,
+							user  : {
+								login : LOGIN
+							}
+						}
+					);
+
+					return [ server, authenticate(server) ];
+				})
+				.spread(function (server, response) {
+					response1 = response;
+					return authenticate(server);
+				})
+				.then(function (response) {
+					response2 = response;
+				})
+				.nodeify(done);
+			});
+
+			after(function (done) {
+				nock.cleanAll();
+				done();
+			});
+
+			it("verifies the credentials once", function (done) {
+				expect(tokenNock.isDone(), "user request").to.be.true;
+				expect(orgNock.isDone(), "membership request").to.be.true;
+				done();
+			});
+
+			it("caches the auth result", function (done) {
+				expect(response1.result.isAuthenticated, "prohibitted").to.be.true;
+
+				expect(response1.result.credentials, "username")
+				.to.have.property("username", LOGIN);
+
+				expect(response1.result, "results").to.deep.equal(response2.result);
 
 				done();
 			});
