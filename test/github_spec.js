@@ -4,6 +4,7 @@ var Lab    = require("lab");
 var Nipple = require("nipple");
 var nock   = require("nock");
 var plugin = require("..");
+var Q      = require("q");
 var sinon  = require("sinon");
 var _      = require("lodash");
 
@@ -77,7 +78,9 @@ describe("The GitHub basic auth scheme", function () {
 		expect(response.result.error, "challeng").not.to.exist;
 	}
 
-	function authenticate (server, callback) {
+	function authenticate (server) {
+		var deferred = Q.defer();
+
 		server.inject(
 			{
 				headers : {
@@ -87,8 +90,10 @@ describe("The GitHub basic auth scheme", function () {
 				method : "GET",
 				url    : "/"
 			},
-			callback
+			deferred.resolve.bind(deferred)
 		);
+
+		return deferred.promise;
 	}
 
 	function orgRequest () {
@@ -133,27 +138,32 @@ describe("The GitHub basic auth scheme", function () {
 	});
 
 	describe("using the default configuration", function () {
-		var server;
 
-		before(function (done) {
-			server = new Hapi.Server();
-			server.pack.register(plugin, function (error) {
+		function createServer () {
+			var server   = new Hapi.Server();
+
+			return Q.ninvoke(server.pack, "register", plugin)
+			.then(function () {
 				server.auth.strategy("default", "github-basic");
 				createTestRoute(server, "default");
-				done(error);
+				return server;
 			});
-		});
+		}
 
 		describe("with valid credentials", function () {
 			var request;
 			var response;
 
 			before(function (done) {
-				request = userRequest().reply(200, { login : LOGIN });
-				authenticate(server, function (_response_) {
+				createServer()
+				.then(function (server) {
+					request = userRequest().reply(200, { login : LOGIN });
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			after(function (done) {
@@ -191,11 +201,15 @@ describe("The GitHub basic auth scheme", function () {
 			var response;
 
 			before(function (done) {
-				request = userRequest().reply(401);
-				authenticate(server, function (_response_) {
+				createServer()
+				.then(function (server) {
+					request = userRequest().reply(401);
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			it("verifies the credentials with GitHub", function (done) {
@@ -228,17 +242,21 @@ describe("The GitHub basic auth scheme", function () {
 			var getStub;
 
 			before(function (done) {
-				getStub = sinon.stub(
-					Nipple, "get",
-					function (uri, options, callback) {
-						callback(new Error("boom!"));
-					}
-				);
+				createServer()
+				.then(function (server) {
+					getStub = sinon.stub(
+						Nipple, "get",
+						function (uri, options, callback) {
+							callback(new Error("boom!"));
+						}
+					);
 
-				authenticate(server, function (_response_) {
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			after(function (done) {
@@ -265,16 +283,24 @@ describe("The GitHub basic auth scheme", function () {
 			var response;
 
 			before(function (done) {
-				server.inject(
-					{
-						method : "GET",
-						url    : "/"
-					},
-					function (_response_) {
-						response = _response_;
-						done();
-					}
-				);
+				createServer()
+				.then(function (server) {
+					var deferred = Q.defer();
+
+					server.inject(
+						{
+							method : "GET",
+							url    : "/"
+						},
+						deferred.resolve.bind(deferred)
+					);
+
+					return deferred.promise;
+				})
+				.then(function (_response_) {
+					response = _response_;
+				})
+				.nodeify(done);
 			});
 
 			it("presents an authentication challenge", function (done) {
@@ -299,12 +325,12 @@ describe("The GitHub basic auth scheme", function () {
 	});
 
 	describe("configured with application credentials", function () {
-		var server;
 
-		before(function (done) {
-			server = new Hapi.Server();
-			server.pack.register(plugin, function (error) {
+		function createServer () {
+			var server = new Hapi.Server();
 
+			return Q.ninvoke(server.pack, "register", plugin)
+			.then(function () {
 				server.auth.strategy("generate-token", "github-basic", {
 					application : {
 						clientId     : CLIENT_ID,
@@ -316,9 +342,9 @@ describe("The GitHub basic auth scheme", function () {
 				});
 
 				createTestRoute(server, "generate-token");
-				done(error);
+				return server;
 			});
-		});
+		}
 
 		describe("with valid credentials", function () {
 			var response;
@@ -326,13 +352,17 @@ describe("The GitHub basic auth scheme", function () {
 			var userNock;
 
 			before(function (done) {
-				tokenNock = tokenRequest().reply(200, { token : TOKEN });
-				userNock  = userRequest().reply(200, { login : LOGIN });
+				createServer()
+				.then(function (server) {
+					tokenNock = tokenRequest().reply(200, { token : TOKEN });
+					userNock  = userRequest().reply(200, { login : LOGIN });
 
-				authenticate(server, function (_response_) {
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			after(function (done) {
@@ -378,12 +408,16 @@ describe("The GitHub basic auth scheme", function () {
 			var userNock;
 
 			before(function (done) {
-				userNock  = userRequest().reply(401);
+				createServer()
+				.then(function (server) {
+					userNock  = userRequest().reply(401);
 
-				authenticate(server, function (_response_) {
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			after(function (done) {
@@ -428,13 +462,17 @@ describe("The GitHub basic auth scheme", function () {
 			var userNock;
 
 			before(function (done) {
-				tokenNock = tokenRequest().reply(500);
-				userNock  = userRequest().reply(200, { login : LOGIN });
+				createServer()
+				.then(function (server) {
+					tokenNock = tokenRequest().reply(500);
+					userNock  = userRequest().reply(200, { login : LOGIN });
 
-				authenticate(server, function (_response_) {
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			after(function (done) {
@@ -465,20 +503,20 @@ describe("The GitHub basic auth scheme", function () {
 	});
 
 	describe("configured with an organization", function () {
-		var server;
 
-		before(function (done) {
-			server = new Hapi.Server();
-			server.pack.register(plugin, function (error) {
+		function createServer () {
+			var server = new Hapi.Server();
 
+			return Q.ninvoke(server.pack, "register", plugin)
+			.then(function () {
 				server.auth.strategy("basic-org", "github-basic", {
 					organization : ORGANIZATION
 				});
 
 				createTestRoute(server, "basic-org");
-				done(error);
+				return server;
 			});
-		});
+		}
 
 		describe("given credentials for a member of the organization", function () {
 			var orgNock;
@@ -486,13 +524,17 @@ describe("The GitHub basic auth scheme", function () {
 			var userNock;
 
 			before(function (done) {
-				userNock = userRequest().reply(200, { login : LOGIN });
-				orgNock  = orgRequest().reply(204);
+				createServer()
+				.then(function (server) {
+					userNock = userRequest().reply(200, { login : LOGIN });
+					orgNock  = orgRequest().reply(204);
 
-				authenticate(server, function (_response_) {
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			after(function (done) {
@@ -537,13 +579,17 @@ describe("The GitHub basic auth scheme", function () {
 			var userNock;
 
 			before(function (done) {
-				userNock = userRequest().reply(200, { login : LOGIN });
-				orgNock  = orgRequest().reply(404);
+				createServer()
+				.then(function (server) {
+					userNock = userRequest().reply(200, { login : LOGIN });
+					orgNock  = orgRequest().reply(404);
 
-				authenticate(server, function (_response_) {
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			after(function (done) {
@@ -584,12 +630,12 @@ describe("The GitHub basic auth scheme", function () {
 	});
 
 	describe("configured with application credentials and an organization", function () {
-		var server;
 
-		before(function (done) {
-			server = new Hapi.Server();
-			server.pack.register(plugin, function (error) {
+		function createServer () {
+			var server = new Hapi.Server();
 
+			return Q.ninvoke(server.pack, "register", plugin)
+			.then(function () {
 				server.auth.strategy("client-org", "github-basic", {
 					application : {
 						clientId     : CLIENT_ID,
@@ -603,9 +649,9 @@ describe("The GitHub basic auth scheme", function () {
 				});
 
 				createTestRoute(server, "client-org");
-				done(error);
+				return server;
 			});
-		});
+		}
 
 		describe("given credentials for a member of the organization", function () {
 			var orgNock;
@@ -614,14 +660,18 @@ describe("The GitHub basic auth scheme", function () {
 			var userNock;
 
 			before(function (done) {
-				orgNock   = orgRequest().reply(204);
-				tokenNock = tokenRequest().reply(200, { token : TOKEN });
-				userNock  = userRequest().reply(200, { login : LOGIN });
+				createServer()
+				.then(function (server) {
+					orgNock   = orgRequest().reply(204);
+					tokenNock = tokenRequest().reply(200, { token : TOKEN });
+					userNock  = userRequest().reply(200, { login : LOGIN });
 
-				authenticate(server, function (_response_) {
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			after(function (done) {
@@ -679,14 +729,18 @@ describe("The GitHub basic auth scheme", function () {
 			var userNock;
 
 			before(function (done) {
-				orgNock   = orgRequest().reply(404);
-				tokenNock = tokenRequest().reply(500);
-				userNock  = userRequest().reply(200, { login : LOGIN });
+				createServer()
+				.then(function (server) {
+					orgNock   = orgRequest().reply(404);
+					tokenNock = tokenRequest().reply(500);
+					userNock  = userRequest().reply(200, { login : LOGIN });
 
-				authenticate(server, function (_response_) {
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			after(function (done) {
@@ -739,31 +793,35 @@ describe("The GitHub basic auth scheme", function () {
 	});
 
 	describe("configured with a realm", function () {
-		var server;
 
-		before(function (done) {
-			server = new Hapi.Server();
-			server.pack.register(plugin, function (error) {
+		function createServer () {
+			var server = new Hapi.Server();
 
+			return Q.ninvoke(server.pack, "register", plugin)
+			.then(function () {
 				server.auth.strategy("basic-realm", "github-basic", {
 					realm : REALM
 				});
 
 				createTestRoute(server, "basic-realm");
-				done(error);
+				return server;
 			});
-		});
+		}
 
 		describe("failing to authenticate a user", function () {
 			var response;
 			var userNock;
 
 			before(function (done) {
-				userNock = userRequest().reply(401);
-				authenticate(server, function (_response_) {
+				createServer()
+				.then(function (server) {
+					userNock = userRequest().reply(401);
+					return authenticate(server);
+				})
+				.then(function (_response_) {
 					response = _response_;
-					done();
-				});
+				})
+				.nodeify(done);
 			});
 
 			after(function (done) {
@@ -779,6 +837,70 @@ describe("The GitHub basic auth scheme", function () {
 
 				expect(response.result.error.output.headers[CHALLENGE], "no realm")
 				.to.contain("realm=\"" + REALM +"\"");
+
+				done();
+			});
+		});
+	});
+
+	describe("cache", function () {
+
+		function createServer () {
+			var server = new Hapi.Server();
+
+			return Q.ninvoke(server.pack, "register", plugin)
+			.then(function () {
+				server.auth.strategy("caching", "github-basic", {
+					organization : ORGANIZATION
+				});
+
+				createTestRoute(server, "caching");
+				return server;
+			});
+		}
+
+		describe("for a authenticated request", function () {
+			var orgNock;
+			var response1;
+			var response2;
+			var userNock;
+
+			before(function (done) {
+				createServer()
+				.then(function (server) {
+					orgNock  = orgRequest().reply(204);
+					userNock = userRequest().reply(200, { login : LOGIN });
+
+					return [ server, authenticate(server) ];
+				})
+				.spread(function (server, response) {
+					response1 = response;
+					return authenticate(server);
+				})
+				.then(function (response) {
+					response2 = response;
+				})
+				.nodeify(done);
+			});
+
+			after(function (done) {
+				nock.cleanAll();
+				done();
+			});
+
+			it("verifies the credentials once", function (done) {
+				expect(userNock.isDone(), "user request").to.be.true;
+				expect(orgNock.isDone(), "membership request").to.be.true;
+				done();
+			});
+
+			it("caches the auth result", function (done) {
+				expect(response1.result.isAuthenticated, "prohibitted").to.be.true;
+
+				expect(response1.result.credentials, "username")
+				.to.have.property("username", LOGIN);
+
+				expect(response1.result, "results").to.deep.equal(response2.result);
 
 				done();
 			});
